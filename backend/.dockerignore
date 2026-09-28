@@ -1,0 +1,25 @@
+# Python bytecode y caché
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Entornos virtuales
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Datos y bases de datos locales
+*.db
+*.sqlite
+*.sqlite3
+datos/
+
+# Control de versiones y logs
+.git
+.gitignore
+.env
+*.log

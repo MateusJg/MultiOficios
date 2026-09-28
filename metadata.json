@@ -1,0 +1,6 @@
+{
+  "name": "MultiOficios",
+  "description": "Plataforma de Técnicos y Operarios de Oficios Varios con Geolocalización, contratación por obra o labor, pagos seguros y seguimiento en tiempo real.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

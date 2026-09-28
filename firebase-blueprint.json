@@ -1,0 +1,43 @@
+{
+  "entities": {
+    "collaborators": {
+      "title": "Colaborador",
+      "description": "Perfiles de técnicos, maestros de obra y operarios verificados.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "specialtyTitle": { "type": "string" },
+        "dailyRate": { "type": "number" },
+        "isVerified": { "type": "boolean" },
+        "approvalStatus": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "dailyRate"]
+    },
+    "contracts": {
+      "title": "Contrato de Obra",
+      "description": "Contratos por obra o labor con fondos en custodia fiduciaria (Escrow).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "collaboratorId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "baseAmount": { "type": "number" },
+        "status": { "type": "string" },
+        "escrowStatus": { "type": "string" }
+      },
+      "required": ["id", "orderNumber", "collaboratorId", "clientId", "totalAmount", "status", "escrowStatus"]
+    },
+    "chats": {
+      "title": "Salas de Chat",
+      "description": "Salas de mensajería directa entre clientes y técnicos.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" }
+      }
+    }
+  }
+}

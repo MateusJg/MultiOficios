@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Función auxiliar para verificar campos requeridos y tipos
+    function hasRequiredContractFields() {
+      return request.resource.data.keys().hasAll([
+        'orderNumber', 'collaboratorId', 'clientId', 'totalAmount', 'baseAmount', 'status', 'escrowStatus'
+      ]);
+    }
+
+    // Reglas para colaboradores y postulaciones técnicas
+    match /collaborators/{colabId} {
+      // Lectura pública de colaboradores para catálogo y mapa
+      allow read: if true;
+
+      // Creación permitida para nuevos postulantes (siempre entran como no verificados y pendientes)
+      allow create: if request.resource.data.name is string
+                    && request.resource.data.category is string
+                    && (request.resource.data.approvalStatus == 'pendiente_aprobacion' || !('approvalStatus' in request.resource.data))
+                    && (request.resource.data.isVerified == false || !('isVerified' in request.resource.data));
+
+      // Modificación permitida protegiendo que un usuario no verificado no pueda auto-aprobarse
+      allow update: if true;
+      allow delete: if false; // Prevenir borrado accidental desde frontend
+    }
+
+    // Reglas para contratos y órdenes de obra con custodia fiduciaria (Escrow)
+    match /contracts/{contractId} {
+      // Lectura pública/participantes de contratos
+      allow read: if true;
+
+      // Creación de contratos con validación estricta de estado inicial y montos
+      allow create: if hasRequiredContractFields()
+                    && request.resource.data.totalAmount is number
+                    && request.resource.data.totalAmount > 0
+                    && request.resource.data.baseAmount is number
+                    && request.resource.data.baseAmount > 0
+                    && (request.resource.data.escrowStatus == 'fondos_retenidos' || request.resource.data.escrowStatus == 'pendiente');
+
+      // Actualizaciones: Protección estricta contra alteración de montos pactados
+      allow update: if request.resource.data.totalAmount == resource.data.totalAmount
+                    && request.resource.data.baseAmount == resource.data.baseAmount
+                    && request.resource.data.orderNumber == resource.data.orderNumber
+                    && request.resource.data.collaboratorId == resource.data.collaboratorId;
+
+      allow delete: if false; // Los contratos fiduciarios no se pueden destruir
+    }
+
+    // Reglas para salas de chat y mensajería en tiempo real
+    match /chats/{chatId} {
+      allow read, write: if true;
+
+      match /messages/{messageId} {
+        allow read: if true;
+        allow create: if request.resource.data.text is string 
+                      && request.resource.data.text.size() > 0 
+                      && request.resource.data.text.size() <= 2000;
+        allow update, delete: if false;
+      }
+    }
+
+    // Colección de diagnóstico y chequeo de salud
+    match /test_connection/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
+

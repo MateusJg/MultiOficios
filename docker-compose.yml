@@ -1,0 +1,43 @@
+services:
+  # ============================================================================
+  # 1. Microservicio Frontend (React 19 + Tailwind CSS + Vite / Nginx)
+  # ============================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: multioficios_frontend
+    restart: always
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - multioficios_network
+
+  # ============================================================================
+  # 2. Microservicio Backend (Node.js + Express + TypeScript - Opción A)
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: multioficios_backend
+    restart: always
+    ports:
+      - "${BACKEND_PORT:-5001}:5000"
+    volumes:
+      - ./datos:/app/datos
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - SECRET_KEY=MultiOficios_Secret_Jwt_2026
+      - CORS_ORIGINS=*
+    networks:
+      - multioficios_network
+
+networks:
+  multioficios_network:
+    driver: bridge
+
+volumes:
+  datos_volume:
+    driver: local
