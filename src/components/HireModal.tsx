@@ -22,6 +22,7 @@ interface HireModalProps {
   userLocation: LocationCoordinates;
   onClose: () => void;
   onSuccess: (newContract: WorkContract) => void;
+  clientProfile?: { id?: string; name?: string; phone?: string };
 }
 
 export const HireModal: React.FC<HireModalProps> = ({
@@ -29,6 +30,7 @@ export const HireModal: React.FC<HireModalProps> = ({
   userLocation,
   onClose,
   onSuccess,
+  clientProfile,
 }) => {
   const [serviceType, setServiceType] = useState<'jornal' | 'por_obra' | 'horas'>('jornal');
   const [unitsCount, setUnitsCount] = useState<number>(1);
@@ -39,6 +41,7 @@ export const HireModal: React.FC<HireModalProps> = ({
   const [paymentMethod, setPaymentMethod] = useState<'pse' | 'tarjeta' | 'billetera'>('pse');
   const [bankSelected, setBankSelected] = useState<string>('Bancolombia');
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
   const [step, setStep] = useState<'details' | 'payment' | 'confirmation'>('details');
 
   // Pricing math
@@ -62,6 +65,7 @@ export const HireModal: React.FC<HireModalProps> = ({
   };
 
   const handleExecutePayment = async () => {
+    setPaymentError(null);
     setIsProcessing(true);
     try {
       // 1. Iniciar transacción en pasarela de pagos con custodia fiduciaria
@@ -74,13 +78,17 @@ export const HireModal: React.FC<HireModalProps> = ({
         workDescription,
       });
 
+      if (!paymentReceipt || !paymentReceipt.ok) {
+        throw new Error('La pasarela de pagos no pudo procesar la transacción.');
+      }
+
       // 2. Crear y validar contrato en el servidor Express con tarifas verificadas
       const res = await api.createContract({
         collaboratorId: collaborator.id,
         collaboratorName: collaborator.name,
         collaboratorSpecialty: collaborator.specialtyTitle,
         collaboratorAvatar: collaborator.avatar,
-        serviceType,
+        serviceType: serviceType === 'horas' ? 'por_horas' : serviceType,
         unitsCount,
         baseAmount: baseRate,
         arlInsuranceFee,
@@ -90,9 +98,9 @@ export const HireModal: React.FC<HireModalProps> = ({
         scheduledDate,
         scheduledTime,
         paymentMethod,
-        clientId: 'user-me',
-        clientName: 'José Mateus',
-        clientPhone: '+57 300 123 4567',
+        clientId: clientProfile?.id || 'client-me',
+        clientName: clientProfile?.name || 'Cliente MultiOficios',
+        clientPhone: clientProfile?.phone || '+57 300 123 4567',
         location: {
           ...userLocation,
           address: workAddress,
@@ -100,77 +108,18 @@ export const HireModal: React.FC<HireModalProps> = ({
       });
 
       setIsProcessing(false);
-      const generatedContract = res.contract || {
-        id: `OBRA-${Date.now()}`,
-        orderNumber: `#MO-${Math.floor(10000 + Math.random() * 90000)}`,
-        clientId: 'user-me',
-        clientName: 'José Mateus',
-        clientPhone: '+57 300 123 4567',
-        collaboratorId: collaborator.id,
-        collaboratorName: collaborator.name,
-        collaboratorSpecialty: collaborator.specialtyTitle,
-        collaboratorAvatar: collaborator.avatar,
-        serviceType,
-        unitsCount,
-        baseAmount: baseRate,
-        arlInsuranceFee,
-        platformProtectionFee,
-        totalAmount,
-        status: 'fondos_en_custodia',
-        workDescription,
-        location: { ...userLocation, address: workAddress },
-        scheduledDate,
-        scheduledTime,
-        paymentMethod,
-        escrowStatus: 'fondos_retenidos',
-        createdAt: new Date().toISOString(),
-        progressUpdates: [
-          {
-            timestamp: 'Ahora',
-            status: 'fondos_en_custodia',
-            note: `Pago ${paymentReceipt.transactionId} aprobado vía ${selectedBankName}. Fondos retenidos bajo custodia fiduciaria.`,
-          },
-        ],
-      };
-
-      onSuccess(generatedContract);
+      if (res && res.contract) {
+        onSuccess(res.contract);
+      } else {
+        throw new Error('El servidor no retornó el contrato formalizado.');
+      }
     } catch (e) {
-      console.warn('Error al procesar con el servidor REST, aplicando fallback local:', e);
+      console.error('Error al procesar con el servidor REST:', e);
       setIsProcessing(false);
-      const randomOrder = Math.floor(10000 + Math.random() * 90000);
-      const fallbackContract: WorkContract = {
-        id: `OBRA-2026-${randomOrder}`,
-        orderNumber: `#MO-${randomOrder}`,
-        clientId: 'user-me',
-        clientName: 'José Mateus',
-        clientPhone: '+57 300 123 4567',
-        collaboratorId: collaborator.id,
-        collaboratorName: collaborator.name,
-        collaboratorSpecialty: collaborator.specialtyTitle,
-        collaboratorAvatar: collaborator.avatar,
-        serviceType,
-        unitsCount,
-        baseAmount: baseRate,
-        arlInsuranceFee,
-        platformProtectionFee,
-        totalAmount,
-        status: 'fondos_en_custodia',
-        workDescription,
-        location: { ...userLocation, address: workAddress },
-        scheduledDate,
-        scheduledTime,
-        paymentMethod,
-        escrowStatus: 'fondos_retenidos',
-        createdAt: new Date().toISOString(),
-        progressUpdates: [
-          {
-            timestamp: 'Ahora',
-            status: 'fondos_en_custodia',
-            note: `Contrato formalizado. Pago de $${totalAmount.toLocaleString('es-CO')} COP retenido en custodia segura de MultiOficios.`,
-          },
-        ],
-      };
-      onSuccess(fallbackContract);
+      setPaymentError(
+        (e as Error).message ||
+          'No se pudo procesar el pago o generar el contrato fiduciario. Por favor verifique sus datos o intente nuevamente.'
+      );
     }
   };
 
@@ -377,6 +326,17 @@ export const HireModal: React.FC<HireModalProps> = ({
             </form>
           ) : (
             <div className="space-y-4">
+              {/* Payment Error Alert */}
+              {paymentError && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2.5 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <b className="font-bold text-rose-900">No se pudo procesar la transacción fiduciaria:</b>
+                    <p className="mt-0.5 text-rose-700">{paymentError}</p>
+                  </div>
+                </div>
+              )}
+
               {/* Payment Summary */}
               <div className="bg-stone-50 rounded-2xl p-4 border border-stone-200 space-y-2 text-xs">
                 <div className="font-bold text-stone-800 pb-2 border-b border-stone-200">

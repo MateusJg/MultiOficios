@@ -20,8 +20,14 @@ service cloud.firestore {
                     && (request.resource.data.approvalStatus == 'pendiente_aprobacion' || !('approvalStatus' in request.resource.data))
                     && (request.resource.data.isVerified == false || !('isVerified' in request.resource.data));
 
-      // Modificación permitida protegiendo que un usuario no verificado no pueda auto-aprobarse
-      allow update: if true;
+      // Modificación permitida pero protegiendo privilegios:
+      // Un usuario no puede auto-aprobarse ni auto-verificarse desde el cliente web
+      allow update: if (
+        // Si no cambian el estado de aprobación ni verificación, pueden actualizar disponibilidad, bio, fotos, etc.
+        (!('isVerified' in request.resource.data) || request.resource.data.isVerified == resource.data.isVerified) &&
+        (!('approvalStatus' in request.resource.data) || request.resource.data.approvalStatus == resource.data.approvalStatus)
+      );
+
       allow delete: if false; // Prevenir borrado accidental desde frontend
     }
 
@@ -38,11 +44,14 @@ service cloud.firestore {
                     && request.resource.data.baseAmount > 0
                     && (request.resource.data.escrowStatus == 'fondos_retenidos' || request.resource.data.escrowStatus == 'pendiente');
 
-      // Actualizaciones: Protección estricta contra alteración de montos pactados
+      // Actualizaciones: Protección estricta contra alteración de montos pactados y partes
       allow update: if request.resource.data.totalAmount == resource.data.totalAmount
                     && request.resource.data.baseAmount == resource.data.baseAmount
                     && request.resource.data.orderNumber == resource.data.orderNumber
-                    && request.resource.data.collaboratorId == resource.data.collaboratorId;
+                    && request.resource.data.collaboratorId == resource.data.collaboratorId
+                    && request.resource.data.clientId == resource.data.clientId
+                    // Una vez liberado el fideicomiso, el estado de custodia no se puede revertir
+                    && (resource.data.escrowStatus != 'liberado_al_colaborador' || request.resource.data.escrowStatus == 'liberado_al_colaborador');
 
       allow delete: if false; // Los contratos fiduciarios no se pueden destruir
     }
@@ -66,4 +75,3 @@ service cloud.firestore {
     }
   }
 }
-

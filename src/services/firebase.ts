@@ -62,7 +62,7 @@ export function cleanFirestoreData<T extends Record<string, any>>(obj: T): Recor
 }
 
 /**
- * Initializes Firestore with base collaborators if collection is empty
+ * Initializes Firestore with base collaborators and sample contracts if collection is empty
  */
 export async function initializeFirestoreData(): Promise<void> {
   try {
@@ -79,32 +79,65 @@ export async function initializeFirestoreData(): Promise<void> {
       const batch = writeBatch(db);
       for (const colab of MOCK_COLLABORATORS) {
         const docRef = doc(db, COLLABORATORS_COLLECTION, colab.id);
-        batch.set(docRef, colab);
+        batch.set(docRef, cleanFirestoreData(colab));
       }
       await batch.commit();
+    }
+
+    // Seed initial contracts if empty to preserve sample history
+    const contractsRef = collection(db, CONTRACTS_COLLECTION);
+    const contractSnapshot = await getDocs(contractsRef).catch(() => null);
+    if (contractSnapshot && contractSnapshot.empty) {
+      const cBatch = writeBatch(db);
+      for (const contract of MOCK_CONTRACTS) {
+        const docRef = doc(db, CONTRACTS_COLLECTION, contract.id);
+        cBatch.set(docRef, cleanFirestoreData(contract));
+      }
+      await cBatch.commit().catch(() => {});
     }
   } catch {
     // Graceful offline fallback: app functions 100% locally with mock data
   }
 }
 
-function getMergedCollaborators(base: Collaborator[]): Collaborator[] {
+function getMergedCollaborators(remoteItems: Collaborator[], isFromRemote = false): Collaborator[] {
   try {
     const localRaw = localStorage.getItem('multioficios_custom_colabs');
-    if (!localRaw) return base;
+    if (!localRaw) return remoteItems;
     const localMap: Record<string, Collaborator> = JSON.parse(localRaw);
-    const result = [...base];
-    for (const id in localMap) {
-      const idx = result.findIndex((c) => c.id === id);
-      if (idx >= 0) {
-        result[idx] = localMap[id];
-      } else {
-        result.unshift(localMap[id]);
+
+    if (isFromRemote) {
+      // Remote data is authoritative: update local storage with remote updates
+      for (const remoteColab of remoteItems) {
+        if (localMap[remoteColab.id]) {
+          localMap[remoteColab.id] = { ...localMap[remoteColab.id], ...remoteColab };
+        }
       }
+      localStorage.setItem('multioficios_custom_colabs', JSON.stringify(localMap));
+
+      // Append local draft technicians that haven't been committed to Firestore yet
+      const result = [...remoteItems];
+      for (const id in localMap) {
+        if (!result.some((c) => c.id === id)) {
+          result.unshift(localMap[id]);
+        }
+      }
+      return result;
+    } else {
+      // Initial local merge before network connection completes
+      const result = [...remoteItems];
+      for (const id in localMap) {
+        const idx = result.findIndex((c) => c.id === id);
+        if (idx >= 0) {
+          result[idx] = { ...result[idx], ...localMap[id] };
+        } else {
+          result.unshift(localMap[id]);
+        }
+      }
+      return result;
     }
-    return result;
   } catch {
-    return base;
+    return remoteItems;
   }
 }
 
@@ -127,29 +160,32 @@ function getLocalContracts(): WorkContract[] {
  * Subscribes to real-time updates for collaborators (local-first with Firestore sync)
  */
 export function subscribeToCollaborators(
-  onData: (collaborators: Collaborator[]) => void,
+  onData: (collaborators: Collaborator[], isRemote: boolean) => void,
   onError?: (error: Error) => void
 ) {
-  // Always immediately emit cached/local data first
-  onData(getMergedCollaborators(MOCK_COLLABORATORS));
+  // Emit initial local/cached data first with isRemote = false
+  onData(getMergedCollaborators(MOCK_COLLABORATORS, false), false);
 
   try {
     const colRef = collection(db, COLLABORATORS_COLLECTION);
     return onSnapshot(
       colRef,
       (snapshot) => {
+        const isLive = !snapshot.metadata.fromCache;
         if (!snapshot.empty) {
           const items = snapshot.docs.map((docSnap) => ({
             ...docSnap.data(),
             id: docSnap.id
           } as Collaborator));
-          onData(getMergedCollaborators(items));
+          onData(getMergedCollaborators(items, true), isLive);
+        } else {
+          onData(getMergedCollaborators([], true), isLive);
         }
       },
       (err) => {
         // Fallback to local data on connection error without breaking the app
         if (onError) onError(err);
-        onData(getMergedCollaborators(MOCK_COLLABORATORS));
+        onData(getMergedCollaborators(MOCK_COLLABORATORS, false), false);
       }
     );
   } catch (err) {

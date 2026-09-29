@@ -89,7 +89,7 @@ export interface WorkContract {
   collaboratorName: string;
   collaboratorSpecialty: string;
   collaboratorAvatar: string;
-  serviceType: 'jornal' | 'por_obra' | 'horas';
+  serviceType: 'jornal' | 'por_obra' | 'horas' | 'por_horas';
   unitsCount: number; // e.g. 2 jornales or 1 obra
   baseAmount: number;
   arlInsuranceFee: number;

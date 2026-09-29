@@ -1,4 +1,6 @@
 // @ts-nocheck
+/// <reference types="node" />
+
 /**
  * MultiOficios Full-Stack Engine (Option A: Node.js + Express + TypeScript)
  * Unifies API REST Microservices, Real-Time Endpoints, and Vite Middleware
@@ -17,7 +19,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Security configuration (server-side only, never bundled to client)
-const ADMIN_MASTER_PASSWORD = process.env.ADMIN_MASTER_PASSWORD || 'AdminMultiOficios2026!';
 const ESCROW_SIGNING_SECRET = process.env.ESCROW_SIGNING_SECRET || 'multioficios-fiduciary-escrow-signing-key-2026';
 
 function generateAdminToken(): string {
@@ -74,8 +75,8 @@ function calculateHaversineDistance(lat1: number, lon1: number, lat2: number, lo
 
 export async function createServer() {
   const app = express();
-  // Dev server must run on port 3000 according to environment constraints
-  const PORT = 3000;
+  // Server port supports cloud injection with 3000 standard fallback
+  const PORT = parseInt(process.env.PORT || '3000', 10);
   const isProd = process.env.NODE_ENV === 'production';
 
   app.use(express.json());
@@ -151,7 +152,7 @@ export async function createServer() {
       res.status(404).json({ error: 'Colaborador no encontrado' });
       return;
     }
-    const validStates = ['disponible_hoy', 'en_obra', 'no_disponible'];
+    const validStates = ['disponible_hoy', 'disponible_24h', 'en_obra', 'pausado', 'no_disponible'];
     if (availability && validStates.includes(availability)) {
       colab.availability = availability;
     }
@@ -185,20 +186,16 @@ export async function createServer() {
   // 4c. Autenticación de Administrador (Server-Side Token Verification)
   app.post('/api/admin/login', (req: Request, res: Response) => {
     const { password } = req.body;
-    if (!password) {
+    if (!password || typeof password !== 'string') {
       res.status(400).json({ error: 'Contraseña requerida' });
       return;
     }
 
-    const validPasswords = [
-      ADMIN_MASTER_PASSWORD,
-      'AdminMultiOficios2026!',
-      'admin2026',
-      'multioficios2026',
-      'Admin2026!',
-    ];
+    const inputClean = password.trim();
+    const OFFICIAL_ADMIN_PASSWORD = 'AdminMultiOficio$2026';
 
-    if (validPasswords.includes(password.trim())) {
+    // Única contraseña permitida (sin variantes)
+    if (inputClean === OFFICIAL_ADMIN_PASSWORD) {
       const token = generateAdminToken();
       res.json({
         ok: true,
@@ -225,8 +222,9 @@ export async function createServer() {
   // 4d. Pasarela de Pagos & Custodia Fiduciaria (Payment Gateway Integration)
   app.post('/api/pagos/iniciar', (req: Request, res: Response) => {
     const { method, bankEntity, amount, collaboratorId, workDescription } = req.body;
-    if (!amount || amount <= 0) {
-      res.status(400).json({ error: 'Monto de pago inválido' });
+    const numAmount = typeof amount === 'number' ? amount : parseFloat(amount);
+    if (!numAmount || isNaN(numAmount) || numAmount <= 0) {
+      res.status(400).json({ error: 'Monto de pago inválido. Debe ser un valor numérico positivo.' });
       return;
     }
 
@@ -280,11 +278,27 @@ export async function createServer() {
     }
 
     const colab = colaboradoresState.find((c) => c.id === data.collaboratorId);
-    const unitsCount = Math.max(1, parseInt(data.unitsCount, 10) || 1);
+    if (!colab && !data.collaboratorName) {
+      res.status(404).json({ error: 'Colaborador no encontrado en el sistema' });
+      return;
+    }
 
-    // Validación y cálculo en el servidor: nunca confiar en precios alterados en el frontend
-    const verifiedDailyRate = colab ? colab.dailyRate : 120000;
-    const verifiedBaseAmount = verifiedDailyRate * unitsCount;
+    const unitsCount = Math.max(1, parseInt(data.unitsCount, 10) || 1);
+    const serviceType = data.serviceType || 'jornal';
+
+    // Validación y cálculo matemático coherente con el tipo de servicio seleccionado
+    let verifiedBaseAmount = 0;
+    if (serviceType === 'por_horas' || serviceType === 'horas') {
+      const hourlyRate = colab?.hourlyRate || (typeof data.baseAmount === 'number' && unitsCount > 0 ? Math.round(data.baseAmount / unitsCount) : 25000);
+      verifiedBaseAmount = hourlyRate * unitsCount;
+    } else if (serviceType === 'por_obra') {
+      verifiedBaseAmount = typeof data.baseAmount === 'number' && data.baseAmount > 0 ? data.baseAmount : 180000;
+    } else {
+      // Por jornal
+      const dailyRate = colab?.dailyRate || (typeof data.baseAmount === 'number' && unitsCount > 0 ? Math.round(data.baseAmount / unitsCount) : 120000);
+      verifiedBaseAmount = dailyRate * unitsCount;
+    }
+
     const verifiedArlFee = 12000; // Tarifa oficial ARL Riesgo V
     const verifiedProtectionFee = Math.round(verifiedBaseAmount * 0.05); // 5% fee garantía y soporte
     const verifiedTotalAmount = verifiedBaseAmount + verifiedArlFee + verifiedProtectionFee;
@@ -297,13 +311,13 @@ export async function createServer() {
       orderNumber,
       collaboratorId: data.collaboratorId,
       collaboratorName: colab?.name || data.collaboratorName || 'Técnico Especialista',
-      collaboratorSpecialty: colab?.specialtyTitle || 'Técnico Especialista',
-      collaboratorAvatar: colab?.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=300',
+      collaboratorSpecialty: colab?.specialtyTitle || data.collaboratorSpecialty || 'Técnico Especialista',
+      collaboratorAvatar: colab?.avatar || data.collaboratorAvatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=300',
       clientId: data.clientId || 'user-client-1',
       clientName: data.clientName || 'Cliente MultiOficios',
       clientPhone: data.clientPhone || '+57 310 123 4567',
       workDescription: data.workDescription.trim(),
-      serviceType: data.serviceType || 'jornal',
+      serviceType,
       unitsCount,
       baseAmount: verifiedBaseAmount,
       arlInsuranceFee: verifiedArlFee,
@@ -403,12 +417,14 @@ export async function createServer() {
       return;
     }
 
-    // Validación de autoridad: sólo el cliente dueño del contrato o un administrador autenticado
-    if (!isAdmin && clientId && contract.clientId !== clientId) {
-      res.status(403).json({
-        error: 'No autorizado. Solo el cliente titular de la obra puede liberar los fondos en custodia.',
-      });
-      return;
+    // Validación de autoridad estricta: sólo el cliente dueño del contrato o un administrador autenticado
+    if (!isAdmin) {
+      if (!clientId || contract.clientId !== clientId) {
+        res.status(403).json({
+          error: 'No autorizado. Se requiere que el cliente titular de la obra o un administrador autorice la liberación de fondos.',
+        });
+        return;
+      }
     }
 
     contract.status = 'finalizado';

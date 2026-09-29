@@ -12,22 +12,38 @@ import {
   Calendar,
   Filter
 } from 'lucide-react';
-import { WorkContract } from '../types';
+import { WorkContract, ActiveUserProfile } from '../types';
 
 interface HistoryModalProps {
   contracts: WorkContract[];
   onClose: () => void;
   onSelectContract: (contractId: string) => void;
+  activeProfile?: ActiveUserProfile;
 }
 
 export const HistoryModal: React.FC<HistoryModalProps> = ({
   contracts,
   onClose,
   onSelectContract,
+  activeProfile,
 }) => {
   const [filter, setFilter] = useState<'todas' | 'activas' | 'finalizadas'>('todas');
 
-  const filtered = contracts.filter((c) => {
+  const userFilteredContracts = contracts.filter((c) => {
+    if (!activeProfile || activeProfile.role === 'admin') return true;
+    if (activeProfile.role === 'colaborador') {
+      return c.collaboratorId === activeProfile.id;
+    }
+    // Rol Cliente: mostrar contratos propios del cliente o de demostración
+    return (
+      c.clientId === activeProfile.id ||
+      c.clientId === 'user-me' ||
+      c.clientId === 'cli-sample' ||
+      c.clientId === 'user-client-1'
+    );
+  });
+
+  const filtered = userFilteredContracts.filter((c) => {
     if (filter === 'activas') return c.status !== 'finalizado' && c.status !== 'cancelado';
     if (filter === 'finalizadas') return c.status === 'finalizado';
     return true;

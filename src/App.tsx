@@ -75,9 +75,11 @@ export default function App() {
 
     // Subscribe to real-time Collaborators updates
     const unsubscribeColabs = subscribeToCollaborators(
-      (remoteColabs) => {
+      (remoteColabs, isRemote) => {
         if (remoteColabs && remoteColabs.length > 0) {
           setCollaborators(remoteColabs);
+        }
+        if (isRemote) {
           setIsFirebaseConnected(true);
         }
       },
@@ -151,18 +153,28 @@ export default function App() {
       const saved = localStorage.getItem('multioficios_active_profile');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.role) return parsed;
+        if (parsed && parsed.role) {
+          if (!parsed.id) {
+            parsed.id = parsed.role === 'cliente' ? `client-${Math.random().toString(36).substring(2, 9)}` : 'colab-1';
+          }
+          return parsed;
+        }
       }
     } catch {
       // ignore
     }
-    return { role: 'cliente', name: 'Cliente' };
+    const defaultClientId = `client-${Math.random().toString(36).substring(2, 9)}`;
+    return { id: defaultClientId, role: 'cliente', name: 'Cliente MultiOficios', phone: '+57 300 123 4567' };
   });
 
   const handleSelectProfile = (newProfile: ActiveUserProfile) => {
-    setActiveProfile(newProfile);
+    const enrichedProfile = {
+      ...newProfile,
+      id: newProfile.id || (newProfile.role === 'cliente' ? `client-${Math.random().toString(36).substring(2, 9)}` : newProfile.id),
+    };
+    setActiveProfile(enrichedProfile);
     try {
-      localStorage.setItem('multioficios_active_profile', JSON.stringify(newProfile));
+      localStorage.setItem('multioficios_active_profile', JSON.stringify(enrichedProfile));
     } catch {
       // ignore
     }
@@ -241,11 +253,9 @@ export default function App() {
 
   // Handler for adding a new contract
   const handleContractCreated = (newContract: WorkContract) => {
+    // El contrato ya fue creado y certificado en el backend por HireModal
     setContracts((prev) => [newContract, ...prev]);
-    
-    // Sincronizar tanto con el backend Express seguro como con Firestore en tiempo real
-    api.createContract(newContract).catch((e) => console.warn('Sync contrato API:', e));
-    saveContractToFirestore(newContract).catch((e) => console.warn('Guardado local de contrato:', e));
+    saveContractToFirestore(newContract).catch((e) => console.warn('Guardado en Firestore:', e));
 
     // Add automated notification
     const newNotif: NotificationItem = {
@@ -298,44 +308,31 @@ export default function App() {
   // Handler for releasing escrow funds (Verificado con Backend Express y Firma Fiduciaria)
   const handleReleaseEscrow = async (contractId: string) => {
     const adminToken = sessionStorage.getItem('multioficios_admin_token') || undefined;
-    const clientId = activeProfile.role === 'admin' ? undefined : (activeProfile.id || 'user-me');
+    const clientId = activeProfile.role === 'admin' ? undefined : activeProfile.id;
 
     try {
       const res = await api.releaseEscrow(contractId, clientId, adminToken);
       if (res.ok && res.contract) {
         setContracts((prev) => prev.map((c) => (c.id === contractId ? res.contract : c)));
         saveContractToFirestore(res.contract).catch(() => {});
+
+        const releasedContract = res.contract;
+        setNotifications((prev) => [
+          {
+            id: `notif-${Date.now()}`,
+            title: 'Fondos Liberados al Colaborador',
+            message: `El pago de $${releasedContract.totalAmount.toLocaleString('es-CO')} ha sido dispersado exitosamente a ${releasedContract.collaboratorName}.`,
+            timestamp: 'Ahora',
+            read: false,
+            contractId,
+            type: 'payment',
+          },
+          ...prev,
+        ]);
       }
     } catch (err) {
-      console.warn('Aviso: liberación en fallback local:', err);
-      setContracts((prev) =>
-        prev.map((c) => {
-          if (c.id !== contractId) return c;
-          const updated = {
-            ...c,
-            status: 'finalizado' as ServiceStatus,
-            escrowStatus: 'liberado_al_colaborador' as const,
-          };
-          saveContractToFirestore(updated).catch((e) => console.warn('Liberación en Firestore:', e));
-          return updated;
-        })
-      );
-    }
-
-    const releasedContract = contracts.find((c) => c.id === contractId);
-    if (releasedContract) {
-      setNotifications((prev) => [
-        {
-          id: `notif-${Date.now()}`,
-          title: 'Fondos Liberados al Colaborador',
-          message: `El pago de $${releasedContract.totalAmount.toLocaleString('es-CO')} ha sido dispersado exitosamente a ${releasedContract.collaboratorName}.`,
-          timestamp: 'Ahora',
-          read: false,
-          contractId,
-          type: 'payment',
-        },
-        ...prev,
-      ]);
+      console.error('Error al liberar fondos en custodia:', err);
+      alert(`No se pudo autorizar la liberación de fondos: ${(err as Error).message}`);
     }
   };
 
@@ -375,9 +372,9 @@ export default function App() {
   const handleRegisterCollaborator = (partial: Partial<Collaborator>) => {
     const newColab: Collaborator = {
       id: `colab-${Date.now()}`,
-      name: partial.name || 'Técnico Profesional',
-      documentIdNumber: partial.documentIdNumber || '1.024.582.914',
-      email: partial.email || 'tecnico.profesional@gmail.com',
+      name: partial.name || 'Técnico Postulante',
+      documentIdNumber: partial.documentIdNumber || '',
+      email: partial.email || '',
       avatar: partial.avatar || 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=300&auto=format&fit=crop&q=80',
       category: partial.category || 'plomeria',
       secondaryCategories: partial.secondaryCategories || [],
@@ -833,6 +830,11 @@ export default function App() {
           userLocation={userLocation}
           onClose={() => setHireModalColab(null)}
           onSuccess={handleContractCreated}
+          clientProfile={{
+            id: activeProfile.id,
+            name: activeProfile.name,
+            phone: activeProfile.phone,
+          }}
         />
       )}
 
@@ -953,6 +955,7 @@ export default function App() {
       {isHistoryModalOpen && (
         <HistoryModal
           contracts={contracts}
+          activeProfile={activeProfile}
           onClose={() => setIsHistoryModalOpen(false)}
           onSelectContract={(contractId) => {
             setIsHistoryModalOpen(false);

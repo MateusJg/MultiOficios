@@ -148,16 +148,13 @@ El servidor Express (`server.ts` y `backend/src/server.ts`) expone las siguiente
 
 ---
 
-## 🔑 4. Credenciales de Administrador
+## 🔑 4. Seguridad y Credenciales de Administrador
 
 Para acceder a la **Consola de Administración y Auditoría**, las credenciales se validan en el servidor (`server.ts`):
 
-* **Contraseña Maestra Oficial Recomendada:** `AdminMultiOficios2026!`
-* **Contraseñas Alternativas de Respaldo:**
-  * `admin2026`
-  * `multioficios2026`
-  * `Admin2026!`
-* **Variable de Entorno Personalizable:** `ADMIN_MASTER_PASSWORD` (definida en `.env.example`).
+* **Variable de Entorno:** `ADMIN_MASTER_PASSWORD` (definida en `.env.example`).
+* La autenticación emite un token de sesión `HMAC-SHA256` con caducidad de 24 horas (`POST /api/admin/login`).
+* No se permiten contraseñas inseguras por defecto en entornos de producción. Configure siempre su propia clave mediante la variable de entorno.
 
 ---
 

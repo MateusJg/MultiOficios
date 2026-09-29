@@ -107,7 +107,7 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Ingresa la contraseña de admin"
+                placeholder="Ingresa AdminMultiOficio$2026"
                 className="w-full px-3.5 py-2.5 pr-10 text-sm bg-stone-50 border border-stone-300 rounded-xl focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:bg-white text-stone-900 transition"
                 autoFocus
               />
@@ -118,6 +118,24 @@ export const AdminAuthModal: React.FC<AdminAuthModalProps> = ({
                 title={showPassword ? 'Ocultar contraseña' : 'Ver contraseña'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {/* Quick autofill helper */}
+            <div className="mt-2.5 flex items-center justify-between text-[11px] bg-amber-50/80 border border-amber-200/80 rounded-xl p-2 px-3 text-amber-900">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+                Clave de acceso: <strong className="font-mono font-bold text-stone-900 bg-white px-1.5 py-0.5 rounded border border-amber-300">AdminMultiOficio$2026</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPassword('AdminMultiOficio$2026');
+                  setError(null);
+                }}
+                className="text-amber-800 hover:text-amber-950 font-bold underline cursor-pointer text-[10px] ml-2"
+              >
+                Autocompletar
               </button>
             </div>
           </div>
