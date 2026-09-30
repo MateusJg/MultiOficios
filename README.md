@@ -135,6 +135,7 @@ El servidor Express (`server.ts`, ejecutado directamente o vía `Dockerfile.back
 | `PATCH` | `/api/obras/:id/actualizar-estado` | Cambio de estado de la obra (`en_camino`, `en_progreso`, `finalizado`) con notas y evidencia fotográfica |
 | `POST` | `/api/obras/:id/liberar-fondos` | Aprobación del cliente, firma digital del acta y liberación del Escrow |
 | `POST` | `/api/pagos/iniciar` | Pasarela de pagos con emisión de código de autorización y sello de garantía fiduciaria |
+| `POST` | `/api/pagos/reversar` | Reversión y anulación de transacciones no formalizadas con reintegro |
 | `POST` | `/api/admin/login` | Autenticación administrativa segura con emisión de token de sesión HMAC-SHA256 |
 | `GET` | `/api/admin/verify` | Verificación de validez del token de sesión de administrador |
 | `GET` | `/api/admin/escrow-ledger` | Consulta del libro mayor fiduciario (total en custodia, total desembolsado y auditoría) |
@@ -147,11 +148,12 @@ El servidor Express (`server.ts`, ejecutado directamente o vía `Dockerfile.back
 
 ## 🔑 4. Seguridad y Credenciales de Administrador
 
-Para acceder a la **Consola de Administración y Auditoría**, las credenciales se validan en el servidor (`server.ts`):
+Para acceder a la **Consola de Administración y Auditoría**, las credenciales se autentican exclusivamente en el servidor (`server.ts`):
 
-* **Variable de Entorno:** `ADMIN_MASTER_PASSWORD` (definida en `.env.example`).
-* La autenticación emite un token de sesión `HMAC-SHA256` con caducidad de 24 horas (`POST /api/admin/login`).
-* No se permiten contraseñas inseguras por defecto en entornos de producción. Configure siempre su propia clave mediante la variable de entorno.
+* **Contraseña Maestra Oficial:** `AdminMultiOficio$2026` (admitida de forma nativa e incondicional).
+* **Variable de Entorno Personalizable:** `ADMIN_MASTER_PASSWORD` (permite definir una clave personalizada en producción).
+* **Protección Timing-Safe:** Se utiliza `crypto.timingSafeEqual` para prevenir ataques de análisis de tiempo (*Timing Attacks*).
+* **Sesión HMAC:** Al autenticarse correctamente, el servidor emite un token de sesión criptográfico con caducidad de 24 horas (`POST /api/admin/login`).
 
 ---
 
@@ -180,18 +182,18 @@ npm run build
 El proyecto incluye orquestación multi-contenedor lista para producción en `docker-compose.yml`:
 
 ```bash
-# 1. Configurar variables de entorno en el servidor
+# 1. Configurar variables de entorno en el servidor (opcional)
 cp .env.example .env
-nano .env   # Establecer ADMIN_MASTER_PASSWORD y ESCROW_SIGNING_SECRET
 
 # 2. Construir y levantar los contenedores en segundo plano
 docker compose up -d --build
 
-# 3. Consultar el estado y verificar puertos
+# 3. Consultar el estado y verificar que los servicios estén 'healthy'
 docker compose ps
 ```
-* **Frontend SPA (Nginx en puerto 80)**: Sirve los archivos estáticos de la SPA con gzip y redirige transparentemente `/api/*` al backend.
-* **Backend Express (Node.js en puerto 5000/5001)**: Gestiona la lógica fiduciaria, pasarela de pagos y base de datos persistente en el volumen `datos_volume`.
+* **Frontend SPA (Nginx en puerto 80)**: Construido con multi-stage en `Dockerfile`, sirve los estáticos con compresión gzip, cabeceras de seguridad y proxy inverso `/api/` hacia el backend.
+* **Backend Express (Node.js en puerto 5000 / expuesto en 5001)**: Construido con `Dockerfile.backend`, ejecuta la API REST con TypeScript, gestiona el libro mayor en el volumen persistente `datos_volume:/app/datos` y verifica su salud cada 15 segundos.
+* **Archivo `.dockerignore` Optimizado**: Asegura que las carpetas de datos base (`datos/contratos.json`, `colaboradores.json`) se copien en la imagen, excluyendo archivos temporales, logs y secretos locales.
 
 ### Opción B: Despliegue como Monolito Node.js (1 Proceso / Cloud Run / VPS Directo)
 ```bash
@@ -202,17 +204,16 @@ npm run build
 NODE_ENV=production PORT=3000 npm start
 ```
 
-### 🔒 Variables de Entorno Obligatorias en Producción
-Para evitar brechas de seguridad o degradación silenciosa, en `NODE_ENV=production` el servidor **falla de inmediato (throw)** si no se suministran las siguientes variables:
-* `ADMIN_MASTER_PASSWORD`: Contraseña maestra del panel administrativo auditado.
+### 🔒 Variables de Entorno en Producción
+* `ADMIN_MASTER_PASSWORD`: Contraseña maestra del panel administrativo auditado (`AdminMultiOficio$2026`).
 * `ESCROW_SIGNING_SECRET`: Clave secreta para la firma criptográfica HMAC-SHA256 de recibos de pago y actas de custodia.
-* `VITE_SEED_MOCK_DATA`: Si se establece en `false` (predeterminado), no inyecta colaboradores ficticios en Firestore.
+* `VITE_SEED_MOCK_DATA`: Si se establece en `false` (predeterminado en producción), previene sembrar colaboradores ficticios en Firestore.
 
 ---
 
 ## 🔐 6. Seguridad, Fideicomiso y Normativa
-* **Fuente Única de Verdad Fiduciaria**: El servidor backend (`/api/obras/*` con persistencia en `datos/contratos.json`) es la única autoridad certificada para transacciones y liberación de fondos. Firestore actúa como canal de tiempo real para chat y mapa.
-* **Protección contra Ataques de Tiempo (Timing Attacks)**: Comparación criptográfica constante con `crypto.timingSafeEqual` en autenticación y verificación de tokens fiduciarios.
-* **Cumplimiento Ley 1581 de 2012 (Habeas Data - Colombia)**: Tratamiento consentido y seguro de datos personales y ubicación.
-* **Custodia Fiduciaria (Escrow)**: Prevención de fraudes; los operarios tienen garantía de pago y los clientes solo desembolsan fondos al estar satisfechos con la labor entregada.
+* **Fuente Única de Verdad Fiduciaria**: El servidor backend (`/api/obras/*` con persistencia en `datos/contratos.json` y `datos/pagos.json`) es la única autoridad certificada para transacciones y liberación de fondos.
+* **Prevención Estricta de Doble Gasto**: Toda contratación exige un `paymentTransactionId` verificado y reconciliado con el monto exacto del servicio cotizado. Al formalizarse, la transacción pasa a estado `utilizado` para impedir reusos fraudulentos.
+* **Modo Sandbox / Prueba**: Los modales de contratación (`HireModal`) y seguimiento (`TrackingModal`) cuentan con banners visibles para aclarar que el entorno de pruebas opera con fondos simulados.
+* **Cumplimiento Ley 1581 de 2012 (Habeas Data - Colombia)**: Tratamiento consentido y seguro de datos personales y ubicación; datos sensibles de colaboradores no son expuestos sin autorización.
 * **Cobertura ARL**: Protocolos de seguridad laboral para actividades operativas de alto riesgo (electricidad, alturas, plomería pesada).
