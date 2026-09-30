@@ -10,6 +10,11 @@ export interface PaymentInitiationPayload {
   bankEntity: string;
   amount: number;
   collaboratorId: string;
+  serviceType?: string;
+  unitsCount?: number;
+  baseAmount?: number;
+  collaboratorDailyRate?: number;
+  collaboratorHourlyRate?: number;
   workDescription: string;
 }
 
@@ -101,6 +106,22 @@ export const api = {
       body: JSON.stringify({ availability }),
     });
     if (!res.ok) throw new Error('Error al actualizar disponibilidad');
+    return res.json();
+  },
+
+  async syncCollaborator(colab: Collaborator, adminToken?: string): Promise<{ ok: boolean; colaborador: Collaborator }> {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (adminToken) headers['Authorization'] = `Bearer ${adminToken}`;
+
+    const res = await fetch('/api/colaboradores', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(colab),
+    });
+    if (!res.ok) {
+      const errMsg = await parseErrorMessage(res, 'Error al sincronizar técnico en el servidor');
+      throw new Error(errMsg);
+    }
     return res.json();
   },
 
@@ -201,6 +222,20 @@ export const api = {
 
     if (!res.ok) {
       const errMsg = await parseErrorMessage(res, 'Fallo en la pasarela de pagos');
+      throw new Error(errMsg);
+    }
+    return res.json();
+  },
+
+  async reversePayment(transactionId: string, reason?: string): Promise<{ ok: boolean; refundAmount?: number }> {
+    const res = await fetch('/api/pagos/reversar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transactionId, reason }),
+    });
+
+    if (!res.ok) {
+      const errMsg = await parseErrorMessage(res, 'Fallo al reversar el pago');
       throw new Error(errMsg);
     }
     return res.json();

@@ -11,7 +11,7 @@ service cloud.firestore {
 
     // Reglas para colaboradores y postulaciones técnicas
     match /collaborators/{colabId} {
-      // Lectura pública de colaboradores para catálogo y mapa
+      // Lectura pública de técnicos verificados para catálogo y mapa
       allow read: if true;
 
       // Creación permitida para nuevos postulantes (siempre entran como no verificados y pendientes)
@@ -20,10 +20,9 @@ service cloud.firestore {
                     && (request.resource.data.approvalStatus == 'pendiente_aprobacion' || !('approvalStatus' in request.resource.data))
                     && (request.resource.data.isVerified == false || !('isVerified' in request.resource.data));
 
-      // Modificación permitida pero protegiendo privilegios:
-      // Un usuario no puede auto-aprobarse ni auto-verificarse desde el cliente web
+      // Modificación protegida: Los usuarios pueden actualizar disponibilidad, bio, tarifas, etc.,
+      // pero no pueden auto-verificarse ni auto-aprobarse desde el cliente web
       allow update: if (
-        // Si no cambian el estado de aprobación ni verificación, pueden actualizar disponibilidad, bio, fotos, etc.
         (!('isVerified' in request.resource.data) || request.resource.data.isVerified == resource.data.isVerified) &&
         (!('approvalStatus' in request.resource.data) || request.resource.data.approvalStatus == resource.data.approvalStatus)
       );
@@ -32,8 +31,9 @@ service cloud.firestore {
     }
 
     // Reglas para contratos y órdenes de obra con custodia fiduciaria (Escrow)
+    // El servidor backend es la única fuente fiduciaria de verdad autorizada para modificar estados de custodia
     match /contracts/{contractId} {
-      // Lectura pública/participantes de contratos
+      // Lectura de contratos
       allow read: if true;
 
       // Creación de contratos con validación estricta de estado inicial y montos
@@ -44,34 +44,28 @@ service cloud.firestore {
                     && request.resource.data.baseAmount > 0
                     && (request.resource.data.escrowStatus == 'fondos_retenidos' || request.resource.data.escrowStatus == 'pendiente');
 
-      // Actualizaciones: Protección estricta contra alteración de montos pactados y partes
-      allow update: if request.resource.data.totalAmount == resource.data.totalAmount
-                    && request.resource.data.baseAmount == resource.data.baseAmount
-                    && request.resource.data.orderNumber == resource.data.orderNumber
-                    && request.resource.data.collaboratorId == resource.data.collaboratorId
-                    && request.resource.data.clientId == resource.data.clientId
-                    // Una vez liberado el fideicomiso, el estado de custodia no se puede revertir
-                    && (resource.data.escrowStatus != 'liberado_al_colaborador' || request.resource.data.escrowStatus == 'liberado_al_colaborador');
+      // Las actualizaciones de contratos y de custodia (Escrow) se ejecutan exclusivamente 
+      // a través del servidor backend Express con certificados HMAC
+      allow update: if false;
 
       allow delete: if false; // Los contratos fiduciarios no se pueden destruir
     }
 
     // Reglas para salas de chat y mensajería en tiempo real
     match /chats/{chatId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasAny(['collaboratorId', 'clientId']);
+      allow update, delete: if false;
 
       match /messages/{messageId} {
         allow read: if true;
         allow create: if request.resource.data.text is string 
                       && request.resource.data.text.size() > 0 
-                      && request.resource.data.text.size() <= 2000;
+                      && request.resource.data.text.size() <= 2000
+                      && request.resource.data.senderName is string
+                      && request.resource.data.senderId is string;
         allow update, delete: if false;
       }
-    }
-
-    // Colección de diagnóstico y chequeo de salud
-    match /test_connection/{docId} {
-      allow read, write: if true;
     }
   }
 }

@@ -10,9 +10,7 @@ dist-ssr
 .vscode
 .idea
 
-# Directorios de backend y base de datos (tienen su propio contexto)
-backend
-datos
+# Archivos de base de datos sqlite locales temporales
 *.db
 *.sqlite
 *.sqlite3

@@ -69,6 +69,13 @@ export async function initializeFirestoreData(): Promise<void> {
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       return;
     }
+    // En producción no se siembran colaboradores ficticios a menos que se configure explícitamente VITE_SEED_MOCK_DATA=true
+    const isExplicitSeed = import.meta.env.VITE_SEED_MOCK_DATA === 'true';
+    const isDevMode = import.meta.env.DEV;
+    if (!isExplicitSeed && !isDevMode) {
+      return;
+    }
+
     const colRef = collection(db, COLLABORATORS_COLLECTION);
     const timeoutPromise = new Promise<never>((_, reject) => 
       setTimeout(() => reject(new Error('timeout')), 2500)

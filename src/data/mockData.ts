@@ -266,7 +266,99 @@ export const INITIAL_COLLABORATORS: Collaborator[] = [
   }
 ];
 
-export const INITIAL_CONTRACTS: WorkContract[] = [];
+export const INITIAL_CONTRACTS: WorkContract[] = [
+  {
+    id: 'contrato-demo-1',
+    orderNumber: 'MO-2026-1001',
+    collaboratorId: 'colab-1',
+    collaboratorName: 'Carlos Eduardo Mendoza',
+    collaboratorSpecialty: 'Técnico de Plomería e Hidráulica',
+    collaboratorAvatar: 'https://images.unsplash.com/photo-1540569014015-19a7be504e3a?w=300&auto=format&fit=crop&q=80',
+    clientId: 'cli-sample',
+    clientName: 'María Fernanda Gómez',
+    clientPhone: '+57 310 987 6543',
+    workDescription: 'Instalación de tubería hidráulica y grifería de baño principal con prueba de presión.',
+    serviceType: 'jornal',
+    unitsCount: 1,
+    baseAmount: 140000,
+    arlInsuranceFee: 12000,
+    platformProtectionFee: 7000,
+    totalAmount: 159000,
+    status: 'fondos_en_custodia',
+    paymentMethod: 'pse',
+    escrowStatus: 'fondos_retenidos',
+    scheduledDate: '2026-03-30',
+    scheduledTime: '08:00 AM - 12:00 PM',
+    location: {
+      lat: 4.6345,
+      lng: -74.1458,
+      address: 'Carrera 78 # 35-20 Sur',
+      city: 'Bogotá D.C.',
+      neighborhood: 'Kennedy Central',
+    },
+    createdAt: '2026-03-29T14:30:00.000Z',
+    progressUpdates: [
+      {
+        status: 'solicitado',
+        timestamp: '02:30 PM',
+        note: 'Solicitud radicada bajo póliza fiduciaria CERT-ESCROW-DEMO1',
+      },
+      {
+        status: 'fondos_en_custodia',
+        timestamp: '02:35 PM',
+        note: 'Pago retenido en custodia fiduciaria estricta de MultiOficios.',
+      },
+    ],
+  },
+  {
+    id: 'contrato-demo-2',
+    orderNumber: 'MO-2026-1002',
+    collaboratorId: 'colab-2',
+    collaboratorName: 'Javier Antonio Herrera',
+    collaboratorSpecialty: 'Electricista Matriculado CONTE',
+    collaboratorAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+    clientId: 'cli-sample',
+    clientName: 'Andrés Felipe Morales',
+    clientPhone: '+57 315 222 3344',
+    workDescription: 'Adecuación de tablero eléctrico de 8 circuitos e instalación de breakers termomagnéticos.',
+    serviceType: 'por_horas',
+    unitsCount: 4,
+    baseAmount: 128000,
+    arlInsuranceFee: 12000,
+    platformProtectionFee: 6400,
+    totalAmount: 146400,
+    status: 'finalizado',
+    paymentMethod: 'pse',
+    escrowStatus: 'liberado_al_colaborador',
+    scheduledDate: '2026-03-28',
+    scheduledTime: '09:00 AM - 01:00 PM',
+    location: {
+      lat: 4.638,
+      lng: -74.152,
+      address: 'Calle 38 Sur # 79-15',
+      city: 'Bogotá D.C.',
+      neighborhood: 'Castilla',
+    },
+    createdAt: '2026-03-28T09:00:00.000Z',
+    progressUpdates: [
+      {
+        status: 'solicitado',
+        timestamp: '09:00 AM',
+        note: 'Orden creada y certificada en custodia fiduciaria.',
+      },
+      {
+        status: 'fondos_en_custodia',
+        timestamp: '09:05 AM',
+        note: 'Fondos retenidos en cuenta de custodia.',
+      },
+      {
+        status: 'finalizado',
+        timestamp: '01:15 PM',
+        note: 'Obra concluida a satisfacción. Fondos dispersados al técnico.',
+      },
+    ],
+  },
+];
 
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
   {

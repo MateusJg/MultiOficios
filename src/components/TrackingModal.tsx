@@ -191,6 +191,15 @@ export const TrackingModal: React.FC<TrackingModalProps> = ({
             </div>
           </div>
 
+          {/* Banner Informativo de Modo Prueba / Sandbox */}
+          <div className="bg-amber-50 border-b border-amber-200/80 px-5 py-2 flex items-center gap-2 text-xs text-amber-950">
+            <span>⚠️</span>
+            <span className="font-bold text-amber-900">MODO PRUEBA (Sandbox):</span>
+            <span className="text-amber-800">
+              Contratos y pólizas fiduciarias en entorno de simulación. La custodia y dispersión de fondos no compromete dinero bancario real.
+            </span>
+          </div>
+
           {/* Body Content */}
           <div className="p-6 space-y-6 flex-1">
             {/* Collaborator Card & Escrow Info */}

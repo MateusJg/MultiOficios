@@ -59,12 +59,13 @@ Construida con un **Stack Unificado 100% en TypeScript** (`React 19 + Vite + Tai
 ├── tsconfig.json          # Configuración TypeScript estricta con Bundler, esModuleInterop y resolveJsonModule
 ├── index.html             # Entrypoint HTML con estilos, Leaflet y Preamble seguro
 ├── Dockerfile             # Multi-stage build (Node 22 Alpine -> Nginx) para el Frontend
-├── docker-compose.yml     # Orquestación Docker para Frontend y Microservicio Backend
-├── nginx.conf             # Servidor web Nginx con compresión gzip y headers de seguridad
+├── Dockerfile.backend     # Contenedor para el Microservicio Backend Express (Node 22 Alpine + TSX)
+├── docker-compose.yml     # Orquestación Docker para Frontend (Nginx 80) y Backend (Express 5000/5001)
+├── nginx.conf             # Servidor web Nginx con compresión gzip, proxy inverso /api/ y headers de seguridad
 ├── metadata.json          # Metadatos del applet y configuración de permisos
 ├── firebase-applet-config.json # Credenciales de conexión a Firebase Firestore
 ├── firebase-blueprint.json # Esquema fiduciario de datos para Firebase
-├── firestore.rules        # Reglas de seguridad para Firestore
+├── firestore.rules        # Reglas de seguridad para Firestore (acceso estricto)
 │
 ├── src/                   # Código Fuente de la Aplicación React 19
 │   ├── main.tsx           # Montaje de la app y registro del Service Worker PWA
@@ -78,8 +79,8 @@ Construida con un **Stack Unificado 100% en TypeScript** (`React 19 + Vite + Tai
 │   │   ├── InteractiveMap.tsx         # Mapa Leaflet con marcadores, radios y geocálculos
 │   │   ├── CollaboratorCard.tsx       # Tarjetas de técnicos con distancia, estrellas y tarifas
 │   │   ├── CollaboratorProfileModal.tsx # Perfil completo con experiencia, galería y QR
-│   │   ├── HireModal.tsx              # Modal de contratación con Escrow, ARL y pasarela PSE
-│   │   ├── TrackingModal.tsx          # Bitácora de seguimiento de obra y firma de acta
+│   │   ├── HireModal.tsx              # Modal de contratación con Escrow, ARL y pasarela PSE (con banner Sandbox)
+│   │   ├── TrackingModal.tsx          # Bitácora de seguimiento de obra y firma de acta (con banner Sandbox)
 │   │   ├── PrivateChatModal.tsx       # Chat cifrado con soporte de audio y notificaciones
 │   │   ├── TechnicianWorkspace.tsx    # Espacio de trabajo dedicado para colaboradores
 │   │   ├── CollaboratorInboxModal.tsx # Bandeja de entrada de mensajes para técnicos
@@ -105,25 +106,21 @@ Construida con un **Stack Unificado 100% en TypeScript** (`React 19 + Vite + Tai
 │       ├── api.ts             # Cliente REST unificado con tipado y manejo seguro de errores
 │       └── firebase.ts        # Integración con Firebase Firestore para persistencia en la nube
 │
-├── datos/                 # Base de Datos Relacional y Migraciones SQL
-│   ├── schema.sql         # Esquema de tablas SQL (colaboradores, contratos, pagos, usuarios)
-│   ├── init_db.py         # Script de inicialización y siembra de base de datos
-│   ├── backup_util.py     # Script para respaldos y dumps automáticos
-│   └── migrations/        # Historial de migraciones y guía de actualización
-│
-└── backend/               # Microservicio Contenedorizado Independiente (Opción A)
-    ├── src/
-    │   └── server.ts      # API REST en Express con geocálculos y fiduciaria en TS
-    ├── package.json       # Dependencias exclusivas del microservicio
-    ├── tsconfig.json      # Configuración de compilación TS del microservicio
-    └── Dockerfile         # Imagen ligera con Node.js 22 Alpine y TSX
+└── datos/                 # Base de Datos Relacional, Archivos JSON Persistentes y Migraciones
+    ├── contratos.json     # Libro mayor de contratos fiduciarios (fuente de verdad en disco)
+    ├── colaboradores.json # Registro de técnicos y tarifas auditadas
+    ├── pagos.json         # Libro contable de transacciones fiduciarias autorizadas
+    ├── schema.sql         # Esquema de tablas SQL (colaboradores, contratos, pagos, usuarios)
+    ├── init_db.py         # Script de inicialización y siembra de base de datos
+    ├── backup_util.py     # Script para respaldos y dumps automáticos
+    └── migrations/        # Historial de migraciones y guía de actualización
 ```
 
 ---
 
 ## 🔌 3. Endpoints de la API REST (`/api/*`)
 
-El servidor Express (`server.ts` y `backend/src/server.ts`) expone las siguientes rutas:
+El servidor Express (`server.ts`, ejecutado directamente o vía `Dockerfile.backend`) expone las siguientes rutas:
 
 | Método | Ruta | Descripción |
 |---|---|---|
@@ -179,39 +176,43 @@ npm run lint
 npm run build
 ```
 
-### Despliegue con Docker Compose (Producción VPS / Hostinger)
-El proyecto incluye orquestación multi-contenedor en `docker-compose.yml`:
+### Opción A: Despliegue con Docker Compose (2 Contenedores - Recomendado para Hostinger VPS)
+El proyecto incluye orquestación multi-contenedor lista para producción en `docker-compose.yml`:
 
 ```bash
-# 1. Construir y levantar los contenedores en segundo plano
-docker-compose up -d --build
+# 1. Configurar variables de entorno en el servidor
+cp .env.example .env
+nano .env   # Establecer ADMIN_MASTER_PASSWORD y ESCROW_SIGNING_SECRET
 
-# 2. Consultar el estado de los contenedores
-docker-compose ps
+# 2. Construir y levantar los contenedores en segundo plano
+docker compose up -d --build
 
-# 3. Monitorear los logs en tiempo real
-docker-compose logs -f
+# 3. Consultar el estado y verificar puertos
+docker compose ps
 ```
-* **Frontend SPA (Nginx)**: `http://localhost:80`
-* **Microservicio Backend (Node.js/Express)**: `http://localhost:5001/api/health`
+* **Frontend SPA (Nginx en puerto 80)**: Sirve los archivos estáticos de la SPA con gzip y redirige transparentemente `/api/*` al backend.
+* **Backend Express (Node.js en puerto 5000/5001)**: Gestiona la lógica fiduciaria, pasarela de pagos y base de datos persistente en el volumen `datos_volume`.
 
-### Despliegue en VPS (Ubuntu 22.04 / 24.04 LTS con Certificado SSL)
+### Opción B: Despliegue como Monolito Node.js (1 Proceso / Cloud Run / VPS Directo)
 ```bash
-# 1. Clonar el repositorio
-git clone https://github.com/tu-usuario/multioficios-plataforma.git /var/www/multioficios
-cd /var/www/multioficios
+# 1. Compilar aplicación frontend
+npm run build
 
-# 2. Iniciar contenedores
-docker-compose up -d --build
-
-# 3. Configurar certificado SSL gratuito con Let's Encrypt
-certbot --nginx -d tu-dominio.com
+# 2. Ejecutar servidor unificado (Express sirve /dist y /api/*)
+NODE_ENV=production PORT=3000 npm start
 ```
+
+### 🔒 Variables de Entorno Obligatorias en Producción
+Para evitar brechas de seguridad o degradación silenciosa, en `NODE_ENV=production` el servidor **falla de inmediato (throw)** si no se suministran las siguientes variables:
+* `ADMIN_MASTER_PASSWORD`: Contraseña maestra del panel administrativo auditado.
+* `ESCROW_SIGNING_SECRET`: Clave secreta para la firma criptográfica HMAC-SHA256 de recibos de pago y actas de custodia.
+* `VITE_SEED_MOCK_DATA`: Si se establece en `false` (predeterminado), no inyecta colaboradores ficticios en Firestore.
 
 ---
 
-## 🔐 6. Seguridad y Normativa
+## 🔐 6. Seguridad, Fideicomiso y Normativa
+* **Fuente Única de Verdad Fiduciaria**: El servidor backend (`/api/obras/*` con persistencia en `datos/contratos.json`) es la única autoridad certificada para transacciones y liberación de fondos. Firestore actúa como canal de tiempo real para chat y mapa.
+* **Protección contra Ataques de Tiempo (Timing Attacks)**: Comparación criptográfica constante con `crypto.timingSafeEqual` en autenticación y verificación de tokens fiduciarios.
 * **Cumplimiento Ley 1581 de 2012 (Habeas Data - Colombia)**: Tratamiento consentido y seguro de datos personales y ubicación.
 * **Custodia Fiduciaria (Escrow)**: Prevención de fraudes; los operarios tienen garantía de pago y los clientes solo desembolsan fondos al estar satisfechos con la labor entregada.
 * **Cobertura ARL**: Protocolos de seguridad laboral para actividades operativas de alto riesgo (electricidad, alturas, plomería pesada).
-* **Autenticación Protegida en Servidor**: Las contraseñas administrativas nunca se exponen al cliente en el navegador; la verificación se procesa vía `POST /api/admin/login` con tokens firmados con HMAC-SHA256.

@@ -1,0 +1,31 @@
+[
+  {
+    "transactionId": "TX-PSE-1790696590760-9174",
+    "authorizationCode": "AUTH-379329",
+    "fiduciaryStamp": "4C9FE50CEBA4C493",
+    "paymentMethod": "pse",
+    "bankEntity": "Bancolombia (PSE)",
+    "amount": 222000,
+    "collaboratorId": "colab-200k",
+    "serviceType": "jornal",
+    "unitsCount": 1,
+    "baseAmount": 200000,
+    "status": "reversado",
+    "createdAt": "2026-09-29T15:43:10.760Z"
+  },
+  {
+    "transactionId": "TX-PSE-1790696572124-1297",
+    "authorizationCode": "AUTH-610409",
+    "fiduciaryStamp": "21BBC505453F86B2",
+    "paymentMethod": "pse",
+    "bankEntity": "Bancolombia (PSE)",
+    "amount": 222000,
+    "collaboratorId": "colab-200k",
+    "serviceType": "jornal",
+    "unitsCount": 1,
+    "baseAmount": 200000,
+    "status": "utilizado",
+    "createdAt": "2026-09-29T15:42:52.124Z",
+    "contractId": "contrato-1790696582553"
+  }
+]

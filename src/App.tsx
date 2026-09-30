@@ -88,11 +88,36 @@ export default function App() {
       }
     );
 
-    // Subscribe to real-time Contracts updates
+    // 1. Cargar contratos oficiales desde el servidor Express (fuente fiduciaria de verdad)
+    api.getContracts().then((serverContracts) => {
+      if (Array.isArray(serverContracts) && serverContracts.length > 0) {
+        setContracts(serverContracts);
+      }
+    }).catch(() => {});
+
+    // 2. Suscribirse a actualizaciones de Firestore como canal secundario
     const unsubscribeContracts = subscribeToContracts(
       (remoteContracts) => {
         if (remoteContracts && remoteContracts.length > 0) {
-          setContracts(remoteContracts);
+          setContracts((prev) => {
+            const map = new Map<string, WorkContract>();
+            remoteContracts.forEach((c) => map.set(c.id, c));
+            prev.forEach((c) => {
+              const existing = map.get(c.id);
+              if (existing) {
+                // Preservar estado fiduciario del servidor
+                map.set(c.id, {
+                  ...existing,
+                  status: c.status || existing.status,
+                  escrowStatus: c.escrowStatus || existing.escrowStatus,
+                  paymentTransactionId: c.paymentTransactionId || existing.paymentTransactionId,
+                });
+              } else {
+                map.set(c.id, c);
+              }
+            });
+            return Array.from(map.values());
+          });
         }
       }
     );
@@ -155,7 +180,12 @@ export default function App() {
         const parsed = JSON.parse(saved);
         if (parsed && parsed.role) {
           if (!parsed.id) {
-            parsed.id = parsed.role === 'cliente' ? `client-${Math.random().toString(36).substring(2, 9)}` : 'colab-1';
+            parsed.id = parsed.role === 'cliente'
+              ? `client-${Math.random().toString(36).substring(2, 9)}`
+              : (parsed.collaboratorId || 'colab-1');
+            try {
+              localStorage.setItem('multioficios_active_profile', JSON.stringify(parsed));
+            } catch {}
           }
           return parsed;
         }
@@ -164,13 +194,24 @@ export default function App() {
       // ignore
     }
     const defaultClientId = `client-${Math.random().toString(36).substring(2, 9)}`;
-    return { id: defaultClientId, role: 'cliente', name: 'Cliente MultiOficios', phone: '+57 300 123 4567' };
+    const initialProfile: ActiveUserProfile = {
+      id: defaultClientId,
+      role: 'cliente',
+      name: 'Cliente MultiOficios',
+      phone: '+57 300 123 4567'
+    };
+    try {
+      localStorage.setItem('multioficios_active_profile', JSON.stringify(initialProfile));
+    } catch {}
+    return initialProfile;
   });
 
   const handleSelectProfile = (newProfile: ActiveUserProfile) => {
-    const enrichedProfile = {
+    const targetId = newProfile.id || (newProfile.role === 'colaborador' ? (newProfile.collaboratorId || 'colab-1') : `client-${Math.random().toString(36).substring(2, 9)}`);
+    const enrichedProfile: ActiveUserProfile = {
       ...newProfile,
-      id: newProfile.id || (newProfile.role === 'cliente' ? `client-${Math.random().toString(36).substring(2, 9)}` : newProfile.id),
+      id: targetId,
+      collaboratorId: newProfile.role === 'colaborador' ? (newProfile.collaboratorId || targetId) : undefined,
     };
     setActiveProfile(enrichedProfile);
     try {
@@ -352,7 +393,11 @@ export default function App() {
           rating: stars,
           date: 'Hoy',
           comment: feedback,
-          serviceTitle: contract.serviceType === 'jornal' ? 'Jornal completo' : 'Servicio por obra',
+          serviceTitle: contract.serviceType === 'jornal'
+            ? 'Jornal completo'
+            : (contract.serviceType === 'por_horas' || contract.serviceType === 'horas')
+              ? 'Servicio por horas'
+              : 'Servicio por obra',
         };
         const total = c.reviewCount + 1;
         const newAvg = Math.round(((c.rating * c.reviewCount + stars) / total) * 10) / 10;
@@ -421,6 +466,7 @@ export default function App() {
 
     setCollaborators((prev) => [newColab, ...prev]);
     saveCollaboratorToFirestore(newColab).catch((e) => console.warn('Nuevo colab en Firestore:', e));
+    api.syncCollaborator(newColab).catch((e) => console.warn('Sync colab en backend:', e));
 
     // Automatically set this device profile as the newly registered collaborator
     handleSelectProfile({
@@ -536,6 +582,7 @@ export default function App() {
       prev.map((c) => (c.id === updatedColab.id ? updatedColab : c))
     );
     saveCollaboratorToFirestore(updatedColab).catch((e) => console.warn('Actualización en Firestore:', e));
+    api.syncCollaborator(updatedColab).catch((e) => console.warn('Sync colab update en backend:', e));
 
     setNotifications((prev) => [
       {
@@ -565,53 +612,73 @@ export default function App() {
   };
 
   // Handler for generating a demo sample work request for technician testing
-  const handleCreateSampleRequest = (colabId: string) => {
+  const handleCreateSampleRequest = async (colabId: string) => {
     const targetColab = collaborators.find((c) => c.id === colabId) || collaborators[0];
-    const newContract: WorkContract = {
-      id: `cont-demo-${Date.now()}`,
-      orderNumber: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
-      clientId: 'cli-sample',
-      clientName: 'Mariana Gómez (Cliente)',
-      clientPhone: '+57 311 589 4432',
-      collaboratorId: targetColab.id,
-      collaboratorName: targetColab.name,
-      collaboratorSpecialty: targetColab.specialtyTitle,
-      collaboratorAvatar: targetColab.avatar,
-      serviceType: 'jornal',
-      unitsCount: 1,
-      baseAmount: 180000,
-      arlInsuranceFee: 8500,
-      platformProtectionFee: 6500,
-      totalAmount: 195000,
-      status: 'fondos_en_custodia',
-      workDescription: 'Instalación y reparación técnica de griferías con garantía de mano de obra.',
-      location: {
-        lat: 4.6750,
-        lng: -74.0550,
-        address: 'Carrera 15 # 85-30 Apto 402',
-        city: 'Bogotá D.C.',
-        neighborhood: 'Chicó Norte',
-      },
-      scheduledDate: 'Hoy',
-      scheduledTime: '2:30 PM',
-      paymentMethod: 'pse',
-      escrowStatus: 'fondos_retenidos',
-      createdAt: 'Ahora mismo',
-      progressUpdates: [
-        {
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: 'solicitado',
-          note: 'Solicitud radicada por el cliente.',
-        },
-        {
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          status: 'fondos_en_custodia',
-          note: 'Fondos retenidos en custodia fiduciaria con éxito.',
-        },
-      ],
-    };
+    const clientTargetId = activeProfile?.id || `client-${Date.now().toString(36)}`;
+    const clientTargetName = activeProfile?.name || 'Cliente MultiOficios';
+    const clientTargetPhone = activeProfile?.phone || '+57 311 589 4432';
 
-    handleContractCreated(newContract);
+    const baseAmount = targetColab.dailyRate || 140000;
+    const arlInsuranceFee = 12000;
+    const platformProtectionFee = Math.round(baseAmount * 0.05);
+    const totalAmount = baseAmount + arlInsuranceFee + platformProtectionFee;
+
+    try {
+      const paymentReceipt = await api.initiatePayment({
+        method: 'pse',
+        bankEntity: 'Bancolombia (Muestra)',
+        amount: totalAmount,
+        collaboratorId: targetColab.id,
+        serviceType: 'jornal',
+        unitsCount: 1,
+        baseAmount,
+        collaboratorDailyRate: targetColab.dailyRate,
+        collaboratorHourlyRate: targetColab.hourlyRate,
+        workDescription: '[Muestra de Demostración] Instalación y reparación técnica de griferías con fondos en custodia fiduciaria.',
+      });
+
+      const newContractPayload: Partial<WorkContract> = {
+        orderNumber: `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
+        clientId: clientTargetId,
+        clientName: clientTargetName,
+        clientPhone: clientTargetPhone,
+        collaboratorId: targetColab.id,
+        collaboratorName: targetColab.name,
+        collaboratorSpecialty: targetColab.specialtyTitle,
+        collaboratorAvatar: targetColab.avatar,
+        serviceType: 'jornal',
+        unitsCount: 1,
+        baseAmount,
+        arlInsuranceFee,
+        platformProtectionFee,
+        totalAmount,
+        status: 'fondos_en_custodia',
+        workDescription: '[Muestra de Demostración] Instalación y reparación técnica de griferías con fondos en custodia fiduciaria.',
+        location: {
+          lat: 4.6750,
+          lng: -74.0550,
+          address: 'Carrera 15 # 85-30 Apto 402',
+          city: 'Bogotá D.C.',
+          neighborhood: 'Chicó Norte',
+        },
+        scheduledDate: 'Hoy',
+        scheduledTime: '2:30 PM',
+        paymentMethod: 'pse',
+        paymentTransactionId: paymentReceipt.transactionId,
+        paymentReceiptAmount: paymentReceipt.amount,
+        collaboratorDailyRate: targetColab.dailyRate,
+        collaboratorHourlyRate: targetColab.hourlyRate,
+        isSample: true,
+        escrowStatus: 'fondos_retenidos',
+      };
+
+      const res = await api.createContract(newContractPayload);
+      if (res && res.contract) {
+        handleContractCreated(res.contract);
+      }
+    } catch (e) {
+      console.warn('Error al crear muestra fiduciaria en servidor:', e);
+    }
   };
 
   const handleOpenAdmin = () => {

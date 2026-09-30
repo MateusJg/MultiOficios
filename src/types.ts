@@ -101,6 +101,11 @@ export interface WorkContract {
   scheduledDate: string;
   scheduledTime: string;
   paymentMethod: 'pse' | 'tarjeta' | 'billetera';
+  paymentTransactionId?: string;
+  paymentReceiptAmount?: number;
+  collaboratorDailyRate?: number;
+  collaboratorHourlyRate?: number;
+  isSample?: boolean;
   escrowStatus: 'fondos_retenidos' | 'liberado_al_colaborador' | 'en_disputa' | 'reembolsado';
   createdAt: string;
   progressUpdates: {

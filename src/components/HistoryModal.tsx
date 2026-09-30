@@ -32,15 +32,11 @@ export const HistoryModal: React.FC<HistoryModalProps> = ({
   const userFilteredContracts = contracts.filter((c) => {
     if (!activeProfile || activeProfile.role === 'admin') return true;
     if (activeProfile.role === 'colaborador') {
-      return c.collaboratorId === activeProfile.id;
+      const colabTargetId = activeProfile.collaboratorId || activeProfile.id;
+      return c.collaboratorId === colabTargetId;
     }
-    // Rol Cliente: mostrar contratos propios del cliente o de demostración
-    return (
-      c.clientId === activeProfile.id ||
-      c.clientId === 'user-me' ||
-      c.clientId === 'cli-sample' ||
-      c.clientId === 'user-client-1'
-    );
+    // Rol Cliente: mostrar exclusivamente los contratos del cliente activo
+    return activeProfile.id ? c.clientId === activeProfile.id : true;
   });
 
   const filtered = userFilteredContracts.filter((c) => {

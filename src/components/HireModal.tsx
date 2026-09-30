@@ -67,20 +67,32 @@ export const HireModal: React.FC<HireModalProps> = ({
   const handleExecutePayment = async () => {
     setPaymentError(null);
     setIsProcessing(true);
+    let issuedReceipt: any = null;
     try {
+      // 0. Sincronizar colaborador en el backend por si fue registrado o actualizado recientemente
+      api.syncCollaborator(collaborator).catch(() => {});
+
       // 1. Iniciar transacción en pasarela de pagos con custodia fiduciaria
       const selectedBankName = bankSelected || 'Bancolombia';
+      const normalizedServiceType = serviceType === 'horas' ? 'por_horas' : serviceType;
+
       const paymentReceipt = await api.initiatePayment({
         method: paymentMethod,
         bankEntity: selectedBankName,
         amount: totalAmount,
         collaboratorId: collaborator.id,
+        serviceType: normalizedServiceType,
+        unitsCount,
+        baseAmount: baseRate,
+        collaboratorDailyRate: collaborator.dailyRate,
+        collaboratorHourlyRate: collaborator.hourlyRate,
         workDescription,
       });
 
       if (!paymentReceipt || !paymentReceipt.ok) {
         throw new Error('La pasarela de pagos no pudo procesar la transacción.');
       }
+      issuedReceipt = paymentReceipt;
 
       // 2. Crear y validar contrato en el servidor Express con tarifas verificadas
       const res = await api.createContract({
@@ -88,7 +100,7 @@ export const HireModal: React.FC<HireModalProps> = ({
         collaboratorName: collaborator.name,
         collaboratorSpecialty: collaborator.specialtyTitle,
         collaboratorAvatar: collaborator.avatar,
-        serviceType: serviceType === 'horas' ? 'por_horas' : serviceType,
+        serviceType: normalizedServiceType,
         unitsCount,
         baseAmount: baseRate,
         arlInsuranceFee,
@@ -98,6 +110,10 @@ export const HireModal: React.FC<HireModalProps> = ({
         scheduledDate,
         scheduledTime,
         paymentMethod,
+        paymentTransactionId: paymentReceipt.transactionId,
+        paymentReceiptAmount: paymentReceipt.amount,
+        collaboratorDailyRate: collaborator.dailyRate,
+        collaboratorHourlyRate: collaborator.hourlyRate,
         clientId: clientProfile?.id || 'client-me',
         clientName: clientProfile?.name || 'Cliente MultiOficios',
         clientPhone: clientProfile?.phone || '+57 300 123 4567',
@@ -115,6 +131,10 @@ export const HireModal: React.FC<HireModalProps> = ({
       }
     } catch (e) {
       console.error('Error al procesar con el servidor REST:', e);
+      // Mecanismo automático de reversa si el pago fue aprobado pero el contrato falló
+      if (issuedReceipt && issuedReceipt.transactionId) {
+        api.reversePayment(issuedReceipt.transactionId, 'Contrato no formalizado').catch(() => {});
+      }
       setIsProcessing(false);
       setPaymentError(
         (e as Error).message ||
@@ -150,6 +170,17 @@ export const HireModal: React.FC<HireModalProps> = ({
           >
             <X className="w-4 h-4" />
           </button>
+        </div>
+
+        {/* Banner Informativo de Modo Prueba / Sandbox */}
+        <div className="bg-amber-50 border-b border-amber-200/80 px-5 py-2.5 flex items-center gap-2.5 text-xs text-amber-950">
+          <span className="text-sm">⚠️</span>
+          <div>
+            <span className="font-bold text-amber-900">MODO PRUEBA (Sandbox):</span>
+            <span className="text-amber-800 ml-1">
+              La pasarela y la custodia fiduciaria operan en entorno simulado para pruebas. No se debitan fondos bancarios reales.
+            </span>
+          </div>
         </div>
 
         {/* Step Indicator */}
